@@ -1,39 +1,102 @@
 from geometry import Rectangle, Cuboid
 
-def config_to_cuboids(config):
-    x = config["printbed_x_min"]
-    y = config["printbed_y_min"]
-    width = config["printbed_x_max"] - x
-    depth = config["printbed_y_max"] - y
-    height = config["printbed_height"]
-    printbed = Cuboid(x, y, 0, width, depth, height)
 
-    x = config["printhead_x_min"]
-    y = config["printhead_y_min"]
-    width = config["printhead_x_max"] - x
-    depth = config["printhead_y_max"] - y
-    height = config["gantry_z_min"]
-    printhead = Cuboid(x, y, 0, width, depth, height)
+class Collision:
 
-    point = config["gantry_xy_min"]
-    width = config["gantry_xy_max"] - point
-    if config["gantry_orientation"] == "x":
-        gantry = Rectangle(printbed.x, point, printbed.width, width)
-    elif config["gantry_orientation"] == "y":
-        gantry = Rectangle(point, printbed.y, width, printbed.depth)
+    def __init__(self, config):
+        self._config = config
 
-    return printbed, printhead, gantry
+        self.printbed = self._read_printbed()
+        self.printhead = self._read_printhead()
+        self.gantry, self.gantry_x_oriented = self._read_gantry()
+        self.gantry_height = config.getfloat("gantry_z_min")
 
-def moving_parts(printhead, gantry, print_object):
-    """Return collision boxes for the moving parts when printing this object"""
-    return [printhead, gantry] #TODO
+        self.current_objects = []
 
-def printjob_collision(printbed, printhead, gantry, current_objects, new_object):
-    if printbed.intersection(new_object) != new_object:
-        # Doesn't fit in the printer at all!
-        return False
+    def _read_printbed(self):
+        stepper_configs = [self._config.getsection("stepper_" + axis)
+                           for axis in "xyz"]
+        min_ = [cfg.getfloat("position_min") for cfg in stepper_configs]
+        max_ = [cfg.getfloat("position_max") for cfg in stepper_configs]
+        return Cuboid(*min_, *max_)
 
-    for obj in current_objects + moving_parts(printhead, gantry, new_object):
-        if new_object.collides_with(obj):
+    def _read_printhead(self):
+        """Return a Rectangle representing the size of the print head
+        as viewed from above. The printing nozzle would be at (0, 0).
+        """
+        config = self._config
+        return Rectangle(
+            -config.getfloat("printhead_x_min"),
+            -config.getfloat("printhead_y_min"),
+            config.getfloat("printhead_x_max"),
+            config.getfloat("printhead_y_max"),
+        )
+
+    def _read_gantry(self):
+        """Return a Rectangle representing the size of the gantry as viewed
+        from above as well as if it is oriented parallel to the X-Axis or not.
+        The printing nozzle would be at the 0-coordinate on the other axis.
+        """
+        config = self._config
+        xy_min = config.getfloat("gantry_xy_min")
+        xy_max = config.getfloat("gantry_xy_max")
+        x_oriented = config.getchoice("gantry_orientation",
+                                      {"x": True, "y": False})
+        if x_oriented:
+            gantry = Rectangle(self.printbed.x, -xy_min,
+                               self.printbed.width, xy_max)
+        else:
+            gantry = Rectangle(-xy_min, self.printbed.y,
+                               xy_max, self.printbed.depth)
+        return gantry, x_oriented
+
+    def moving_parts(self, print_object):
+        """Return collision boxes for the moving parts (printhead and gantry)
+        when printing this object. These areas will include all the space
+        that these parts could move in when printing the given object.
+        """
+        moving_printhead = Rectangle(
+            print_object.x + self.printhead.x,
+            print_object.y + self.printhead.y,
+            print_object.max_x + self.printhead.max_x,
+            print_object.max_y + self.printhead.max_y,
+        )
+        if self.gantry_x_oriented:
+            moving_gantry = Rectangle(
+                self.gantry.x,
+                print_object.y + self.gantry.y,
+                self.gantry.max_x,
+                print_object.max_x + self.gantry.max_x,
+            )
+        else:
+            moving_gantry = Rectangle(
+                print_object.x + self.gantry.x,
+                self.gantry.y,
+                print_object.max_x + self.gantry.max_x,
+                self.gantry.max_x,
+            )
+        return [moving_printhead, moving_gantry]
+
+    def printjob_collision(self, new_object):
+        if self.printbed.intersection(new_object) != new_object:
+            # Doesn't fit in the printer at all!
             return False
-    return True
+
+        for obj in self.current_objects + self.moving_parts(new_object):
+            if new_object.collides_with(obj):
+                return False
+        return True
+    
+    def add_printed_object(self, new_object):
+        """Add an object, like a finished print job, to be considered in the
+        future.
+        """
+        self.current_objects.append(new_object)
+
+    def clear_objects(self):
+        """Empty the list of print objects to keep track of"""
+        self.current_objects.clear()
+
+
+def load_config(config):
+    return Collision(config)
