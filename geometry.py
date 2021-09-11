@@ -34,18 +34,22 @@ class Rectangle:
         max_y = min(self.max_y, other.max_y)
         return Rectangle(x, y, max(max_x, x), max(max_y, y))
 
-    def collides_with(self, other):
-        """Return, whether this rectangle collides with another rectangle"""
+    def collides_with(self, other, padding=0):
+        """Return, whether this rectangle collides with another rectangle.
+        padding specifies a minimum distance that must be present between the
+        Rectangles to not collide."""
         x = max(self.x, other.x)
         y = max(self.y, other.y)
         max_x = min(self.max_x, other.max_x)
         max_y = min(self.max_y, other.max_y)
-        return max_x > x and max_y > y
+        return max_x + padding > x and max_y + padding > y
 
-    def with_border(self, other):
-        """Return a new Rectangle by adding a border based on the
-        dimensions of other. """
-        pass
+    def grow(self, amount):
+        """Return a new Rectangle with all sides grown by the given amount (or
+        shrunk in case of negative values).
+        """
+        return Rectangle(self.x - amount, self.y - amount,
+                         self.max_x + amount, self.max_y + amount)
 
 
 class Cuboid:
@@ -89,14 +93,14 @@ class Cuboid:
         max_z = min(self.max_z, other.max_z)
         return Cuboid(x, y, z, max(max_x, x), max(max_y, y), max(max_z, z))
 
-    def collides_with(self, other):
+    def collides_with(self, other, padding=0):
         x = max(self.x, other.x)
         y = max(self.y, other.y)
         z = max(self.z, other.z)
         max_x = min(self.max_x, other.max_x)
         max_y = min(self.max_y, other.max_y)
         max_z = min(self.max_z, other.max_z)
-        return max_x > x and max_y > y and max_z > z
+        return max_x + padding > x and max_y + padding > y and max_z + padding > z
 
     def projection(self, axis=2):
         """Project the cuboid to a paraxial rectangle"""
@@ -106,3 +110,12 @@ class Cuboid:
             return Rectangle(self.x, self.z, self.max_x, self.max_z)
         elif axis == 2:  # Remove Z-axis
             return Rectangle(self.x, self.y, self.max_x, self.max_y)
+
+    def grow(self, amount):
+        """Return a new Cuboid with all sides grown by the given amount (or
+        shrunk in case of negative values).
+        """
+        return Cuboid(self.x - amount, self.y - amount, self.z - amount,
+                      self.max_x + amount,
+                      self.max_y + amount,
+                      self.max_z + amount)

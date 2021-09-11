@@ -10,6 +10,7 @@ class Collision:
         self.printhead = self._read_printhead()
         self.gantry, self.gantry_x_oriented = self._read_gantry()
         self.gantry_height = config.getfloat("gantry_z_min")
+        self.padding = config.getfloat("padding", 5)
 
         self.current_objects = []
 
@@ -62,28 +63,35 @@ class Collision:
             print_object.max_y + self.printhead.max_y,
         )
         if self.gantry_x_oriented:
-            moving_gantry = Rectangle(
+            moving_gantry = Cuboid(
                 self.gantry.x,
                 print_object.y + self.gantry.y,
+                self.gantry_height,
                 self.gantry.max_x,
-                print_object.max_x + self.gantry.max_x,
+                print_object.max_y + self.gantry.max_y,
+                float('inf'),  # Make the box extend ALL THE WAY to the top
             )
         else:
-            moving_gantry = Rectangle(
+            moving_gantry = Cuboid(
                 print_object.x + self.gantry.x,
                 self.gantry.y,
+                self.gantry_height,
                 print_object.max_x + self.gantry.max_x,
-                self.gantry.max_x,
+                self.gantry.max_y,
+                float('inf'),
             )
-        return [moving_printhead, moving_gantry]
+        return moving_printhead, moving_gantry
 
     def printjob_collision(self, new_object):
         if self.printbed.intersection(new_object) != new_object:
             # Doesn't fit in the printer at all!
             return False
 
-        for obj in self.current_objects + self.moving_parts(new_object):
-            if new_object.collides_with(obj):
+        mv_printhead, mv_gantry = self.moving_parts(new_object)
+        for obj in self.current_objects:
+            if (new_object.collides_with(obj, self.padding) or
+                mv_printhead.collides_with(obj.projection(), self.padding) or
+                mv_gantry.collides_with(obj, self.padding)):
                 return False
         return True
     
