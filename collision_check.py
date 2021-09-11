@@ -1,4 +1,4 @@
-from geometry import Rectangle, Cuboid
+from .geometry import Rectangle, Cuboid
 
 
 class Collision:

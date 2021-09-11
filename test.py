@@ -2,15 +2,18 @@
 
 import configparser
 import copy
+import os
 import unittest
 
 import site
-site.addsitedir("/home/gabriel/3dp/klipperui/klippy/")  #TODO: correct relative path
+_extras_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+site.addsitedir(_extras_dir)  # For collision module
+site.addsitedir(os.path.dirname(_extras_dir))  # For configfile module
 
 import configfile
 
-import geometry
-import collision_check
+from collision import geometry
+import collision
 
 
 # Needed to create ConfigWrapper
@@ -18,7 +21,6 @@ class _DummyPrinter:
     reactor = None
 
 CONFIG_FILE = "test_config.cfg"
-
 
 
 
@@ -43,7 +45,7 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(rectangle.max_x, 5)
         self.assertEqual(rectangle.max_y, 10)
         self.assertEqual(rectangle.area, 600)
-    
+
     def test_rectangle_bool(self):
         # Rectangle with positive area
         r1 = geometry.Rectangle(2, 3, 3, 4)
@@ -93,7 +95,6 @@ class GeometryTest(unittest.TestCase):
         self.assertTrue(r1.collides_with(r6, 1))
         self.assertTrue(r6.collides_with(r1, 1))
         self.assertFalse(r1.collides_with(r7, 1))
-
 
 
     def test_cuboid(self):
@@ -180,14 +181,14 @@ class CollisionTest(unittest.TestCase):
             fileconfig.read_file(fp)
         config = configfile.ConfigWrapper(
             _DummyPrinter(), fileconfig, {}, "collision")
-        self.collision = collision_check.load_config(config)
+        self.collision = collision.load_config(config)
 
         # Make another collision object but with an x-oriented gantry
         fc_x = copy.deepcopy(fileconfig)
         fc_x.set("collision", "gantry_orientation", "x")
         config_x = configfile.ConfigWrapper(
             _DummyPrinter(), fc_x, {}, "collision")
-        self.collision_x = collision_check.load_config(config_x)
+        self.collision_x = collision.load_config(config_x)
 
     def test_attributes(self):
         c = self.collision
@@ -196,7 +197,7 @@ class CollisionTest(unittest.TestCase):
         self.assertIsInstance(c.gantry, geometry.Rectangle)
         self.assertIsInstance(c.gantry_x_oriented, bool)
         self.assertIsInstance(c.gantry_height, float)
-        self.assertGreater(c.gantry_height, 0)
+        self.assertGreaterEqual(c.gantry_height, 0)
         self.assertEqual(c.current_objects, [])
 
         self.assertFalse(c.gantry_x_oriented)
