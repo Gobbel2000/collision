@@ -3,6 +3,7 @@
 import configparser
 import copy
 import os
+import random
 import unittest
 
 import site
@@ -103,8 +104,8 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(cuboid.y, 15)
         self.assertEqual(cuboid.z, 20)
         self.assertEqual(cuboid.width, 20)
-        self.assertEqual(cuboid.depth, 25)
-        self.assertEqual(cuboid.height, 10)
+        self.assertEqual(cuboid.height, 25)
+        self.assertEqual(cuboid.z_height, 10)
 
         self.assertEqual(cuboid.max_x, 30)
         self.assertEqual(cuboid.max_y, 40)
@@ -117,8 +118,8 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(cuboid.y, 15)
         self.assertEqual(cuboid.z, -15)
         self.assertEqual(cuboid.width, 10)
-        self.assertEqual(cuboid.depth, 5)
-        self.assertEqual(cuboid.height, 20)
+        self.assertEqual(cuboid.height, 5)
+        self.assertEqual(cuboid.z_height, 20)
 
         self.assertEqual(cuboid.max_x, 5)
         self.assertEqual(cuboid.max_y, 20)
@@ -213,6 +214,10 @@ class CollisionTest(unittest.TestCase):
         self.assertEqual(cx.moving_parts(new_object),
                          (geometry.Rectangle(-10, 50.1, 176, 252),
                           geometry.Cuboid(0, 71.5, 84, 500, 212, float('inf'))))
+        # Rectangle works too
+        self.assertEqual(cy.moving_parts(new_object.projection()),
+                         (geometry.Rectangle(-10, 50.1, 176, 252),
+                          geometry.Cuboid(41.5, 0, 84, 182, 1000, float('inf'))))
 
     def test_collision(self):
         cy = self.collision
@@ -294,6 +299,111 @@ class CollisionTest(unittest.TestCase):
         self.assertTrue(cx_no_pad.printjob_collision(objects5[1]))
         cy.clear_objects()
         cx.clear_objects()
+
+
+class FinderTest(unittest.TestCase):
+
+    setUp = CollisionTest.setUp
+
+    def test_get_centering_offset(self):
+        c = self.collision
+        o1 = geometry.Rectangle(0, 0, 300, 400)
+        o2 = geometry.Rectangle(10, 10, 490, 990)
+        o3 = geometry.Cuboid(450, 900, 0, 550, 1100, 400)
+
+        self.assertEqual(c.get_centering_offset(o1), (100, 300))
+        self.assertEqual(c.get_centering_offset(o2), (0, 0))
+        self.assertEqual(c.get_centering_offset(o3), (-250, -500))
+
+    def test__condense_range(self):
+        c = self.collision
+        uncondensed = [[-2, 0], [-1, 0], [4, 10], [5, 8], [9, 12], [13, 18]]
+        self.assertEqual(c._condense_ranges(uncondensed),
+            [[-2, 0], [4, 12], [13, 18]])
+        # Redefine the list because it might get mutated
+        uncondensed = [[-2, 0], [-1, 0], [4, 10], [5, 8], [9, 12], [13, 18]]
+        self.assertEqual(c._condense_ranges(uncondensed, 1),
+            [[-2, 0], [4, 18]])
+
+        # Unsorted list
+        uncondensed = [[-2, 0], [-1, 0], [4, 10], [5, 8], [9, 12], [13, 18]]
+        random.shuffle(uncondensed)
+        self.assertEqual(c._condense_ranges(uncondensed),
+            [[-2, 0], [4, 12], [13, 18]])
+
+        # Special inputs
+        self.assertEqual(c._condense_ranges([]), [])
+        self.assertEqual(c._condense_ranges([[5, 10]]), [[5, 10]])
+
+    def test_get_gantry_collisions(self):
+        cy = self.collision
+        cx = self.collision_x
+        objects = [geometry.Cuboid(0, 0, 0, 50, 100, 100),
+                   geometry.Cuboid(10, 570, 0, 70, 590, 100),
+                   geometry.Cuboid(350, 10, 0, 370, 120, 100),
+                   geometry.Cuboid(60, 110, 0, 150, 200, 100),
+                   geometry.Cuboid(150, 110, 0, 250, 200, 50),  # Low enough
+                   geometry.Cuboid(350, 400, 0, 400, 500, 100),
+                   geometry.Cuboid(470, 400, 0, 490, 500, 100),
+                   geometry.Cuboid(350, 570, 0, 400, 750, 100)]
+
+        new_object = geometry.Rectangle(380, 800, 400, 820)
+
+        for o in objects:
+            cy.add_printed_object(o)
+            cx.add_printed_object(o)
+
+        # First don't specify object size
+        self.assertEqual(cy.get_gantry_collisions(),
+                         [geometry.Rectangle(-32, 0, 178.5, 1000),
+                          geometry.Rectangle(318, 0, 428.5, 1000),
+                          geometry.Rectangle(438, 0, 518.5, 1000)])
+        self.assertEqual(cx.get_gantry_collisions(),
+                         [geometry.Rectangle(0, -32, 500, 228.5),
+                          geometry.Rectangle(0, 368, 500, 528.5),
+                          geometry.Rectangle(0, 538, 500, 778.5)])
+
+        # Test with object size
+        self.assertEqual(cy.get_gantry_collisions(new_object),
+                         [geometry.Rectangle(-32, 0, 178.5, 1000),
+                          geometry.Rectangle(318, 0, 518.5, 1000)])
+        self.assertEqual(cx.get_gantry_collisions(new_object),
+                         [geometry.Rectangle(0, -32, 500, 228.5),
+                          geometry.Rectangle(0, 368, 500, 778.5)])
+
+    def test_get_side_offsets(self):
+        cy = self.collision
+        cx = self.collision_x
+        objects = [geometry.Rectangle(0, 0, 10, 10),
+                   geometry.Rectangle(100, 100, 150, 180),  # Too far out
+                   geometry.Rectangle(120, 150, 150, 200),
+                   geometry.Rectangle(170, 430, 330, 570),
+                   geometry.Rectangle(310, 560, 400, 650),
+                   geometry.Rectangle(410, 700, 490, 900)]
+
+        # Construct object in center
+        new_object = geometry.Rectangle(235, 454.9, 319, 523)
+        mv_printhead, _ = cy.moving_parts(new_object)
+        space = mv_printhead.grow(cy.padding)
+        self.assertEqual(space, geometry.Rectangle(150, 400, 350, 600))
+
+        self.assertEqual(set(cx._get_side_offsets(new_object, space, objects)),
+                         {0, -230, -180, 180, -40})
+        self.assertEqual(set(cy._get_side_offsets(new_object, space, objects)),
+                         {0, -450, -170, 170, -40, 250})
+
+    def test_find_offset(self):
+        cy = self.collision
+        cx = self.collision_x
+        objects = [geometry.Cuboid(0, 0, 0, 500, 600, 50),
+                   geometry.Cuboid(0, 650, 0, 300, 1000, 50)]
+        new_object = geometry.Cuboid(200, 400, 0, 250, 500, 100)
+        for o in objects:
+            cy.add_printed_object(o)
+            cx.add_printed_object(o)
+        print(cy.find_offset(new_object))
+        print(cx.find_offset(new_object))
+
 
 
 if __name__ == '__main__':

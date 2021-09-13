@@ -51,6 +51,16 @@ class Rectangle:
         return Rectangle(self.x - amount, self.y - amount,
                          self.max_x + amount, self.max_y + amount)
 
+    def translate(self, x_offset, y_offset):
+        """Move the Rectangle by the given offset without changing its size"""
+        return Rectangle(self.x + x_offset, self.y + y_offset,
+                         self.max_x + x_offset, self.max_y + y_offset)
+
+    def get_range_for_axis(self, axis):
+        if axis == 1:  # Y-Axis
+            return self.y, self.max_y
+        return self.x, self.max_x  # X-Axis
+
 
 class Cuboid:
 
@@ -69,9 +79,9 @@ class Cuboid:
         self.max_z = max_z
 
         self.width = max_x - x
-        self.depth = max_y - y
-        self.height = max_z - z
-        self.volume = self.width * self.depth * self.height
+        self.height = max_y - y
+        self.z_height = max_z - z  # Yes, there are 2 heights. Get over it.
+        self.volume = self.width * self.height * self.z_height
 
     def __bool__(self):
         return bool(self.volume)
@@ -104,12 +114,12 @@ class Cuboid:
 
     def projection(self, axis=2):
         """Project the cuboid to a paraxial rectangle"""
-        if axis == 0:  # Remove X-axis
-            return Rectangle(self.y, self.z, self.max_y, self.max_z)
-        elif axis == 1:  # Remove Y-axis
-            return Rectangle(self.x, self.z, self.max_x, self.max_z)
-        elif axis == 2:  # Remove Z-axis
+        if axis == 2:  # Remove Z-axis
             return Rectangle(self.x, self.y, self.max_x, self.max_y)
+        if axis == 1:  # Remove Y-axis
+            return Rectangle(self.x, self.z, self.max_x, self.max_z)
+        # Remove X-axis
+        return Rectangle(self.y, self.z, self.max_y, self.max_z)
 
     def grow(self, amount):
         """Return a new Cuboid with all sides grown by the given amount (or
@@ -119,3 +129,17 @@ class Cuboid:
                       self.max_x + amount,
                       self.max_y + amount,
                       self.max_z + amount)
+
+    def translate(self, x_offset, y_offset, z_offset):
+        """Move the Cuboid by the given offset without changing its size"""
+        return Cuboid(self.x + x_offset, self.y + y_offset,
+                      self.z + z_offset,
+                      self.max_x + x_offset, self.max_y + y_offset,
+                      self.max_z + z_offset)
+
+    def get_range_for_axis(self, axis):
+        if axis == 2:  # Z-Axis
+            return self.z, self.max_z
+        if axis == 1:  # Y-Axis
+            return self.y, self.max_y
+        return self.x, self.max_x  # X-Axis

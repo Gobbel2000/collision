@@ -15,6 +15,7 @@ class Collision:
         self.current_objects = []
 
     def _read_printbed(self):
+        """Read the printer size from the config and return it as a Cuboid"""
         stepper_configs = [self._config.getsection("stepper_" + axis)
                            for axis in "xyz"]
         min_ = [cfg.getfloat("position_min") for cfg in stepper_configs]
@@ -48,13 +49,15 @@ class Collision:
                                self.printbed.width, xy_max)
         else:
             gantry = Rectangle(-xy_min, self.printbed.y,
-                               xy_max, self.printbed.depth)
+                               xy_max, self.printbed.height)
         return gantry, x_oriented
 
     def moving_parts(self, print_object):
         """Return collision boxes for the moving parts (printhead and gantry)
         when printing this object. These areas will include all the space
         that these parts could move in when printing the given object.
+
+        print_object can be either a Rectangle or a Cuboid
         """
         moving_printhead = Rectangle(
             print_object.x + self.printhead.x,
@@ -82,8 +85,20 @@ class Collision:
             )
         return moving_printhead, moving_gantry
 
+    def fits_in_printer(self, new_object):
+        """Return True if the object is situated within the printer boundaries
+
+        new_object must be a Cuboid
+        """
+        return self.printbed.intersection(new_object) == new_object
+
     def printjob_collision(self, new_object):
-        if self.printbed.intersection(new_object) != new_object:
+        """Return True if this object can be printed without collisions, False
+        otherwise.
+
+        new_object should be a Cuboid outlining the space needed by the object.
+        """
+        if not self.fits_in_printer(new_object):
             # Doesn't fit in the printer at all!
             return False
 
@@ -98,12 +113,248 @@ class Collision:
     def add_printed_object(self, new_object):
         """Add an object, like a finished print job, to be considered in the
         future.
+
+        objects must be Cuboids
         """
         self.current_objects.append(new_object)
 
     def clear_objects(self):
         """Empty the list of print objects to keep track of"""
         self.current_objects.clear()
+
+
+    def find_offset(self, object_cuboid):
+        """For a given object search for an offset where it can be printed
+
+        object_cuboid is a Cuboid.
+
+        If successful, a 2-tuple containing the x and y offset is returned,
+        otherwise returns None.
+        """
+        new_object = object_cuboid.projection()
+        if self.printjob_collision(object_cuboid):
+            # Fits without any offset
+            return (0, 0)
+
+        if (object_cuboid.width > self.printbed.width or
+            object_cuboid.height > self.printbed.height or
+            object_cuboid.z_height > self.printbed.z_height):
+            # Object is larger than printer, not possible
+            return None
+
+        centering_offset = (0, 0)
+        if not self.fits_in_printer(object_cuboid):
+            # Object is not within printer bounds,
+            # but we can fix that by centering it
+            centering_offset = self.get_centering_offset(new_object)
+            new_object = new_object.translate(*centering_offset)
+            object_cuboid = object_cuboid.translate(*centering_offset, 0)
+            if not self.fits_in_printer(object_cuboid):
+                # If it still doesn't fit, the Z-Axis is at fault
+                return None
+
+        if self.printjob_collision(object_cuboid):
+            # Only centering was needed
+            return centering_offset
+
+        mv_printhead, mv_gantry = self.moving_parts(new_object)
+        # Rectangle that represents the actual required space to print
+        needed_space = mv_printhead.grow(self.padding)
+
+        gantry_blocked = self.get_gantry_collisions(new_object)
+        object_boxes = [obj.projection() for obj in self.current_objects]
+        boxes = gantry_blocked + object_boxes
+        side_offsets = self._get_side_offsets(new_object, needed_space,
+                                              object_boxes)
+
+        offset = self._iterate_offset(new_object, needed_space,
+                                      boxes, side_offsets)
+        if offset:
+            # Merge with the initial centering offset, if any
+            return (offset[0] + centering_offset[0],
+                    offset[1] + centering_offset[1])
+        return None
+
+    def get_centering_offset(self, new_object):
+        """Return an offset that centers new_object on the printbed
+        Works with Rectangles as well as Cuboids.
+        """
+        return (self.printbed.width/2 - new_object.width/2 - new_object.x,
+                self.printbed.height/2 - new_object.height/2 - new_object.y)
+
+    def get_gantry_collisions(self, new_object=None):
+        """Return a list of stripes (Rectangles) parallel to the gantry that
+        cannot be moved into because the gantry would collide with existing
+        objects.
+
+        If Rectangle or Cuboid is provided for new_object, the distance between
+        the stripes is always large enough to accomodate that object.
+        """
+        if new_object:
+            min_space = (new_object.height if self.gantry_x_oriented else
+                         new_object.width)
+        else:
+            min_space = 0
+
+        ranges = []
+        for obj in self.current_objects:
+            if obj.max_z + self.padding > self.gantry_height:
+                if self.gantry_x_oriented:
+                    # Pad obj.y with gantry.max_y, because the gantry will
+                    # approach from the outsides
+                    new_range = [obj.y - self.gantry.max_y,
+                                 obj.max_y - self.gantry.y]
+                else:
+                    new_range = [obj.x - self.gantry.max_x,
+                                 obj.max_x - self.gantry.x]
+                ranges.append(new_range)
+        ranges = self._condense_ranges(ranges, min_space)
+        if self.gantry_x_oriented:
+            boxes = [Rectangle(self.gantry.x, y, self.gantry.max_x, max_y)
+                     for y, max_y in ranges]
+        else:
+            boxes = [Rectangle(x, self.gantry.y, max_x, self.gantry.max_y)
+                     for x, max_x in ranges]
+        return boxes
+
+    def _condense_ranges(self, ranges, min_space=0):
+        """Consolidate ranges so that none of them overlap/border each other
+        WARNING: This function may mutate the ranges list as well as its
+        contained lists!"""
+        if not ranges:
+            return []
+        ranges.sort()
+        condensed = ranges[:1]
+        for r in ranges[1:]:
+            prev = condensed[-1]
+            if r[0] <= prev[1] + min_space:
+                if r[1] > prev[1]:
+                    prev[1] = r[1]
+            else:
+                condensed.append(r)
+        return condensed
+
+    def _get_side_offsets(self, new_object, space, boxes):
+        """Return a list of all possible side offsets to be checked.
+        The list is sorted by absolute values.
+        Not all sides need to be accounted for: Upper sides that lie below the
+        initial starting space don't need to be checked as there is always an
+        opposing, closer side.
+        """
+        o_min, o_max = new_object.get_range_for_axis(not self.gantry_x_oriented)
+        space_min, space_max = space.get_range_for_axis(
+                not self.gantry_x_oriented)
+        printer_min, printer_max = self.printbed.get_range_for_axis(
+                not self.gantry_x_oriented)
+        # Put offsets in a set initially to remove any duplicates
+        # Add 0 manually to search without any side offset first
+        unique_offsets = {0}
+        for r in boxes:
+            r_min, r_max = r.get_range_for_axis(not self.gantry_x_oriented)
+            if r_max > space_min:
+                # Upper bound counts
+                offset = r_max - space_min
+                if o_max + offset <= printer_max:
+                    # Upper bound fits
+                    unique_offsets.add(offset)
+            if r_min < space_max:
+                # Lower bound counts
+                offset = r_min - space_max
+                if o_min + offset >= printer_min:
+                    # Lower bound fits
+                    unique_offsets.add(offset)
+        offsets = list(unique_offsets)
+        # Sort using abs, meaning from the middle out
+        offsets.sort(key=abs)
+        return offsets
+
+    def _iterate_offset(self, new_object, needed_space, boxes, side_offsets):
+        """Iterate over all possible offsets that were found for the secondary
+        axis (the one parallel to the gantry) and execute a sweep for all of
+        them.
+
+        Parameters:
+        new_object  Rectangle representing the space needed by the print object
+        needed_space Rectangle similar to new_object but with expanded size to
+                     accommodate the print head and includes padding
+        boxes       List of Rectangles representing all currently present print
+                    objects
+        side_offsets List of offsets to iterate over
+
+        Returns:
+        The offset where the print object fits as a 2-tuple.
+        If no space was found, None is returned.
+        """
+        for offset in side_offsets:
+            offsets = (offset * self.gantry_x_oriented,
+                       offset * (not self.gantry_x_oriented))
+            result = self._sweep(new_object.translate(*offsets),
+                                 needed_space.translate(*offsets),
+                                 boxes)
+            if result is not None:
+                # Merge both offsets
+                return (result[0] + offsets[0], result[1] + offsets[1])
+        return None
+
+    def _sweep(self, new_object, space, boxes):
+        """The main, innermost searching function.
+        Scans along the main axis (the one perpendicular to the gantry) by
+        iteratively increasing the offset just enough to clear all objects we
+        have collided with so far by doing that. Iteration stops when on both
+        sides the printer boundaries are met or a valid spot is found.
+
+        Parameters:
+        new_object and space are like in _iterate_offset, but with the current
+        side offset applied.
+
+        Returns:
+        The offset where we found enough space as a 2-long list. Only the
+        component of the main axis is set, the other will always be 0. If no
+        space was found, None is returned.
+        """
+        offset = [0, 0]
+        next_min_pos = next_max_pos = 0
+        # Set to True when reaching the printer boundaries without success
+        reached_end_min = reached_end_max = False
+        printer_min, printer_max = self.printbed.get_range_for_axis(
+            self.gantry_x_oriented)
+        space_min, space_max = space.get_range_for_axis(self.gantry_x_oriented)
+        # These are needed to check if the offset object fits on the printbed
+        o_min, o_max = new_object.get_range_for_axis(self.gantry_x_oriented)
+
+        colliding = self._get_colliding_objects(space, boxes)
+        while colliding:
+            # Find furthest colliding object to clear in both directions
+            for r in colliding:
+                r_min, r_max = r.get_range_for_axis(self.gantry_x_oriented)
+                if r_min < next_min_pos:
+                    next_min_pos = r_min
+                if r_max > next_max_pos:
+                    next_max_pos = r_max
+
+            # Set next offset to the closest side that still fits
+            neg_offset = next_min_pos - space_max
+            pos_offset = next_max_pos - space_min
+            reached_end_min = o_min + neg_offset < printer_min
+            reached_end_max = o_max + pos_offset > printer_max
+            if ((pos_offset <= -neg_offset or reached_end_min)
+                and not reached_end_max):
+                offset[self.gantry_x_oriented] = pos_offset
+            elif not reached_end_min:
+                offset[self.gantry_x_oriented] = neg_offset
+            else:  # Reached both ends without success
+                break
+
+            offset_space = space.translate(*offset)
+            colliding = self._get_colliding_objects(offset_space, boxes)
+
+        if reached_end_min and reached_end_max:
+            return None
+        return offset
+
+    def _get_colliding_objects(self, one, other):
+        """Return a list of all objects in other that collide with one"""
+        return [r for r in other if one.collides_with(r)]
 
 
 def load_config(config):
