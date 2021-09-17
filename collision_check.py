@@ -163,12 +163,11 @@ class Collision:
 
         gantry_blocked = self.get_gantry_collisions(new_object)
         object_boxes = [obj.projection() for obj in self.current_objects]
-        boxes = gantry_blocked + object_boxes
         side_offsets = self._get_side_offsets(new_object, needed_space,
                                               object_boxes)
 
-        offset = self._iterate_offset(new_object, needed_space,
-                                      boxes, side_offsets)
+        offset = self._iterate_offset(new_object, needed_space, gantry_blocked,
+                                      object_boxes, side_offsets)
         if offset:
             # Merge with the initial centering offset, if any
             return (offset[0] + centering_offset[0],
@@ -186,6 +185,7 @@ class Collision:
         """Return a list of stripes (Rectangles) parallel to the gantry that
         cannot be moved into because the gantry would collide with existing
         objects.
+        These areas account for the size of the gantry and also add padding.
 
         If Rectangle or Cuboid is provided for new_object, the distance between
         the stripes is always large enough to accomodate that object.
@@ -202,11 +202,11 @@ class Collision:
                 if self.gantry_x_oriented:
                     # Pad obj.y with gantry.max_y, because the gantry will
                     # approach from the outsides
-                    new_range = [obj.y - self.gantry.max_y,
-                                 obj.max_y - self.gantry.y]
+                    new_range = [obj.y - self.gantry.max_y - self.padding,
+                                 obj.max_y - self.gantry.y + self.padding]
                 else:
-                    new_range = [obj.x - self.gantry.max_x,
-                                 obj.max_x - self.gantry.x]
+                    new_range = [obj.x - self.gantry.max_x - self.padding,
+                                 obj.max_x - self.gantry.x + self.padding]
                 ranges.append(new_range)
         ranges = self._condense_ranges(ranges, min_space)
         if self.gantry_x_oriented:
@@ -268,7 +268,7 @@ class Collision:
         offsets.sort(key=abs)
         return offsets
 
-    def _iterate_offset(self, new_object, needed_space, boxes, side_offsets):
+    def _iterate_offset(self, new_object, needed_space, gantry_blocked, objects, side_offsets):
         """Iterate over all possible offsets that were found for the secondary
         axis (the one parallel to the gantry) and execute a sweep for all of
         them.
@@ -290,13 +290,13 @@ class Collision:
                        offset * (not self.gantry_x_oriented))
             result = self._sweep(new_object.translate(*offsets),
                                  needed_space.translate(*offsets),
-                                 boxes)
+                                 gantry_blocked, objects)
             if result is not None:
                 # Merge both offsets
                 return (result[0] + offsets[0], result[1] + offsets[1])
         return None
 
-    def _sweep(self, new_object, space, boxes):
+    def _sweep(self, new_object, space, gantry_blocked, objects):
         """The main, innermost searching function.
         Scans along the main axis (the one perpendicular to the gantry) by
         iteratively increasing the offset just enough to clear all objects we
@@ -313,20 +313,36 @@ class Collision:
         space was found, None is returned.
         """
         offset = [0, 0]
-        next_min_pos = next_max_pos = 0
         # Set to True when reaching the printer boundaries without success
         reached_end_min = reached_end_max = False
         printer_min, printer_max = self.printbed.get_range_for_axis(
             self.gantry_x_oriented)
+        printhead_min, printhead_max = self.printhead.get_range_for_axis(
+            self.gantry_x_oriented)
         space_min, space_max = space.get_range_for_axis(self.gantry_x_oriented)
+        # Positions where to move to next:
+        # next_min_pos specifies where to move the upper edge down to
+        # next_max_pos specifies where to move the lower edge up to
+        next_min_pos, next_max_pos = space_max, space_min
         # These are needed to check if the offset object fits on the printbed
         o_min, o_max = new_object.get_range_for_axis(self.gantry_x_oriented)
 
-        colliding = self._get_colliding_objects(space, boxes)
-        while colliding:
+        colliding = self._get_colliding_objects(space, objects)
+        gantry_colliding = self._get_colliding_objects(
+                new_object, gantry_blocked)
+        while colliding or gantry_colliding:
             # Find furthest colliding object to clear in both directions
             for r in colliding:
                 r_min, r_max = r.get_range_for_axis(self.gantry_x_oriented)
+                if r_min < next_min_pos:
+                    next_min_pos = r_min
+                if r_max > next_max_pos:
+                    next_max_pos = r_max
+            for r in gantry_colliding:
+                r_min, r_max = r.get_range_for_axis(self.gantry_x_oriented)
+                # Change from comparing print object edges to needed space edges
+                r_min += printhead_max + self.padding
+                r_max += printhead_min - self.padding
                 if r_min < next_min_pos:
                     next_min_pos = r_min
                 if r_max > next_max_pos:
@@ -343,13 +359,13 @@ class Collision:
             elif not reached_end_min:
                 offset[self.gantry_x_oriented] = neg_offset
             else:  # Reached both ends without success
-                break
+                return None
 
-            offset_space = space.translate(*offset)
-            colliding = self._get_colliding_objects(offset_space, boxes)
+            colliding = self._get_colliding_objects(
+                    space.translate(*offset), objects)
+            gantry_colliding = self._get_colliding_objects(
+                    new_object.translate(*offset), gantry_blocked)
 
-        if reached_end_min and reached_end_max:
-            return None
         return offset
 
     def _get_colliding_objects(self, one, other):

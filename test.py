@@ -339,13 +339,13 @@ class FinderTest(unittest.TestCase):
         cy = self.collision
         cx = self.collision_x
         objects = [geometry.Cuboid(0, 0, 0, 50, 100, 100),
-                   geometry.Cuboid(10, 570, 0, 70, 590, 100),
+                   geometry.Cuboid(10, 580, 0, 70, 590, 100),
                    geometry.Cuboid(350, 10, 0, 370, 120, 100),
                    geometry.Cuboid(60, 110, 0, 150, 200, 100),
                    geometry.Cuboid(150, 110, 0, 250, 200, 50),  # Low enough
                    geometry.Cuboid(350, 400, 0, 400, 500, 100),
-                   geometry.Cuboid(470, 400, 0, 490, 500, 100),
-                   geometry.Cuboid(350, 570, 0, 400, 750, 100)]
+                   geometry.Cuboid(480, 400, 0, 490, 500, 100),
+                   geometry.Cuboid(350, 580, 0, 400, 750, 100)]
 
         new_object = geometry.Rectangle(380, 800, 400, 820)
 
@@ -355,21 +355,21 @@ class FinderTest(unittest.TestCase):
 
         # First don't specify object size
         self.assertEqual(cy.get_gantry_collisions(),
-                         [geometry.Rectangle(-32, 0, 178.5, 1000),
-                          geometry.Rectangle(318, 0, 428.5, 1000),
-                          geometry.Rectangle(438, 0, 518.5, 1000)])
+                         [geometry.Rectangle(-37, 0, 183.5, 1000),
+                          geometry.Rectangle(313, 0, 433.5, 1000),
+                          geometry.Rectangle(443, 0, 523.5, 1000)])
         self.assertEqual(cx.get_gantry_collisions(),
-                         [geometry.Rectangle(0, -32, 500, 228.5),
-                          geometry.Rectangle(0, 368, 500, 528.5),
-                          geometry.Rectangle(0, 538, 500, 778.5)])
+                         [geometry.Rectangle(0, -37, 500, 233.5),
+                          geometry.Rectangle(0, 363, 500, 533.5),
+                          geometry.Rectangle(0, 543, 500, 783.5)])
 
         # Test with object size
         self.assertEqual(cy.get_gantry_collisions(new_object),
-                         [geometry.Rectangle(-32, 0, 178.5, 1000),
-                          geometry.Rectangle(318, 0, 518.5, 1000)])
+                         [geometry.Rectangle(-37, 0, 183.5, 1000),
+                          geometry.Rectangle(313, 0, 523.5, 1000)])
         self.assertEqual(cx.get_gantry_collisions(new_object),
-                         [geometry.Rectangle(0, -32, 500, 228.5),
-                          geometry.Rectangle(0, 368, 500, 778.5)])
+                         [geometry.Rectangle(0, -37, 500, 233.5),
+                          geometry.Rectangle(0, 363, 500, 783.5)])
 
     def test_get_side_offsets(self):
         cy = self.collision
@@ -414,12 +414,10 @@ class FinderTest(unittest.TestCase):
         self.assertEqual(cy.find_offset(new2), expected)
         self.assertEqual(cx.find_offset(new2), expected)
 
-
+        # SIMPLE CASES - ALL LOWER THAN GANTRY
         # One move in both dimensions needed
         objects0 = [geometry.Cuboid(0, 0, 0, 500, 600, 50),
                     geometry.Cuboid(0, 650, 0, 300, 1000, 50)]
-        new0 = self._object_from_space(geometry.Cuboid(
-                200, 400, 0, 400, 600, 100))
         for o in objects0:
             cy.add_printed_object(o)
             cx.add_printed_object(o)
@@ -432,12 +430,49 @@ class FinderTest(unittest.TestCase):
         cy.clear_objects()
         cx.clear_objects()
 
+        # Negative offsets in both dimensions needed
+        objects1 = [geometry.Cuboid(300, 0, 0, 500, 1000, 50),
+                    geometry.Cuboid(0, 500, 0, 300, 1000, 50)]
+        for o in objects1:
+            cy.add_printed_object(o)
+            cx.add_printed_object(o)
+        self.assertEqual(cy.find_offset(new0), (-100, -100))
+        self.assertEqual(cx.find_offset(new0), (-100, -100))
+        cy.clear_objects()
+        cx.clear_objects()
+
         # Move in one dimension needed
-        object1 = geometry.Cuboid(200, 0, 0, 300, 750, 50)
-        cy.add_printed_object(object1)
-        cx.add_printed_object(object1)
+        object2 = geometry.Cuboid(200, 0, 0, 300, 750, 50)
+        cy.add_printed_object(object2)
+        cx.add_printed_object(object2)
         self.assertEqual(cy.find_offset(new0), (100, 0))
         self.assertEqual(cx.find_offset(new0), (0, 350))
+        cy.clear_objects()
+        cx.clear_objects()
+
+        # Barely space left
+        objects3 = [geometry.Cuboid(0, 0, 0, 331, 1000, 50),  # Just enough
+                    geometry.Cuboid(0, 0, 0, 332, 1000, 50)]  # Doesn't fit
+        cy.add_printed_object(objects3[0])
+        cx.add_printed_object(objects3[0])
+        self.assertEqual(cy.find_offset(new0), (131, 0))
+        self.assertEqual(cx.find_offset(new0), (131, 0))
+        cy.add_printed_object(objects3[1])
+        cx.add_printed_object(objects3[1])
+        self.assertIsNone(cy.find_offset(new0))
+        self.assertIsNone(cx.find_offset(new0))
+        cy.clear_objects()
+        cx.clear_objects()
+
+        # GANTRY TESTS
+        # Move in one dimension needed, but with gantry
+        object4 = geometry.Cuboid(200, 100, 0, 400, 600, 100)
+        cy.add_printed_object(object4)
+        cx.add_printed_object(object4)
+        # -206 because the gantry is 6 wider than the printhead here
+        self.assertEqual(cy.find_offset(new0), (-206, 0))
+        # In this case the gantry does not affect the result
+        self.assertEqual(cx.find_offset(new0), (0, 200))
         cy.clear_objects()
         cx.clear_objects()
 
