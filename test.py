@@ -395,14 +395,72 @@ class FinderTest(unittest.TestCase):
     def test_find_offset(self):
         cy = self.collision
         cx = self.collision_x
-        objects = [geometry.Cuboid(0, 0, 0, 500, 600, 50),
-                   geometry.Cuboid(0, 650, 0, 300, 1000, 50)]
-        new_object = geometry.Cuboid(200, 400, 0, 250, 500, 100)
-        for o in objects:
+
+        # SPECIAL CASES:
+        # No objects at all
+        new0 = self._object_from_space(geometry.Cuboid(
+                200, 400, 0, 400, 600, 100))
+        self.assertEqual(_round_tuple(cy.find_offset(new0)), (0, 0))
+        self.assertEqual(_round_tuple(cx.find_offset(new0)), (0, 0))
+
+        # Object is way too large
+        new1 = geometry.Cuboid(-1000, -1000, 0, 4000, 5000, 8000)
+        self.assertIsNone(cy.find_offset(new1))
+        self.assertIsNone(cx.find_offset(new1))
+
+        # Only needs centering to fit in printer
+        new2 = geometry.Cuboid(400, 800, 0, 700, 1200, 100)
+        expected = (-300, -500)
+        self.assertEqual(cy.find_offset(new2), expected)
+        self.assertEqual(cx.find_offset(new2), expected)
+
+
+        # One move in both dimensions needed
+        objects0 = [geometry.Cuboid(0, 0, 0, 500, 600, 50),
+                    geometry.Cuboid(0, 650, 0, 300, 1000, 50)]
+        new0 = self._object_from_space(geometry.Cuboid(
+                200, 400, 0, 400, 600, 100))
+        for o in objects0:
             cy.add_printed_object(o)
             cx.add_printed_object(o)
-        print(cy.find_offset(new_object))
-        print(cx.find_offset(new_object))
+        expected = (100, 200)
+        self.assertEqual(cy.find_offset(new0), expected)
+        self.assertEqual(cx.find_offset(new0), expected)
+        self.assertFalse(cy.printjob_collision(new0))
+        self.assertTrue(cy.printjob_collision(
+            new0.translate(*expected, 0)))
+        cy.clear_objects()
+        cx.clear_objects()
+
+        # Move in one dimension needed
+        object1 = geometry.Cuboid(200, 0, 0, 300, 750, 50)
+        cy.add_printed_object(object1)
+        cx.add_printed_object(object1)
+        self.assertEqual(cy.find_offset(new0), (100, 0))
+        self.assertEqual(cx.find_offset(new0), (0, 350))
+        cy.clear_objects()
+        cx.clear_objects()
+
+    def _object_from_space(self, space):
+        """Take a Cuboid of a space that an offset should be found for and
+        create an object that would need this space by removing padding and
+        printhead borders.
+        """
+        c = self.collision
+        no_padding = space.grow(-c.padding)
+        if (no_padding.width < c.printhead.width or
+            no_padding.height < c.printhead.height):
+            raise ValueError("Space too small!")
+        return geometry.Cuboid(
+                round(no_padding.x - c.printhead.x, 4),
+                round(no_padding.y - c.printhead.y, 4),
+                round(no_padding.z, 4),
+                round(no_padding.max_x - c.printhead.max_x, 4),
+                round(no_padding.max_y - c.printhead.max_y, 4),
+                round(no_padding.max_z, 4))
+
+def _round_tuple(numbers, ndigits=4):
+    return tuple(round(n, ndigits) for n in numbers)
 
 
 
