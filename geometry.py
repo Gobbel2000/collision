@@ -12,11 +12,13 @@ class Rectangle:
 
         self.width = max_x - x
         self.height = max_y - y
-        self.area = self.width * self.height
+
+    def get_area(self):
+        return self.width * self.height
 
     def __bool__(self):
         """Consider a rectangle as true if and only if its area is nonzero"""
-        return bool(self.area)
+        return bool(self.width and self.height)
 
     def __eq__(self, other):
         return (self.x == other.x and
@@ -26,7 +28,8 @@ class Rectangle:
 
     def intersection(self, other):
         """Return the intersection between two rectangles.
-        This is always a rectangle, but may have no area if both rectangles are disjoint.
+        This is always a rectangle, but may have no area if both rectangles are
+        disjoint.
         """
         x = max(self.x, other.x)
         y = max(self.y, other.y)
@@ -81,10 +84,12 @@ class Cuboid:
         self.width = max_x - x
         self.height = max_y - y
         self.z_height = max_z - z  # Yes, there are 2 heights. Get over it.
-        self.volume = self.width * self.height * self.z_height
+
+    def get_volume(self):
+        return self.width * self.height * self.z_height
 
     def __bool__(self):
-        return bool(self.volume)
+        return bool(self.width and self.height and self.z_height)
 
     def __eq__(self, other):
         return (self.x == other.x and
@@ -110,7 +115,9 @@ class Cuboid:
         max_x = min(self.max_x, other.max_x)
         max_y = min(self.max_y, other.max_y)
         max_z = min(self.max_z, other.max_z)
-        return max_x + padding > x and max_y + padding > y and max_z + padding > z
+        return (max_x + padding > x and
+                max_y + padding > y and
+                max_z + padding > z)
 
     def projection(self, axis=2):
         """Project the cuboid to a paraxial rectangle"""

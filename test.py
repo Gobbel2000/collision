@@ -35,7 +35,7 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(rectangle.height, 5)
         self.assertEqual(rectangle.max_x, 14)
         self.assertEqual(rectangle.max_y, 20)
-        self.assertEqual(rectangle.area, 20)
+        self.assertEqual(rectangle.get_area(), 20)
 
     def test_rectangle_negative(self):
         rectangle = geometry.Rectangle(5, 10, -15, -20)
@@ -45,7 +45,7 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(rectangle.height, 30)
         self.assertEqual(rectangle.max_x, 5)
         self.assertEqual(rectangle.max_y, 10)
-        self.assertEqual(rectangle.area, 600)
+        self.assertEqual(rectangle.get_area(), 600)
 
     def test_rectangle_bool(self):
         # Rectangle with positive area
@@ -76,8 +76,8 @@ class GeometryTest(unittest.TestCase):
         expected = geometry.Rectangle(2, 2, 6, 4)
         self.assertEqual(r1.intersection(r2), expected)
         self.assertEqual(r2.intersection(r1), expected)
-        self.assertEqual(r1.intersection(r3).area, 0)
-        self.assertEqual(r1.intersection(r4).area, 0)
+        self.assertEqual(r1.intersection(r3).get_area(), 0)
+        self.assertEqual(r1.intersection(r4).get_area(), 0)
         self.assertEqual(r1.intersection(r5), r5)
         self.assertEqual(r5.intersection(r1), r5)
         self.assertEqual(r1.intersection(r1), r1)
@@ -110,7 +110,7 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(cuboid.max_x, 30)
         self.assertEqual(cuboid.max_y, 40)
         self.assertEqual(cuboid.max_z, 30)
-        self.assertEqual(cuboid.volume, 5000)
+        self.assertEqual(cuboid.get_volume(), 5000)
 
     def test_cuboid_negative(self):
         cuboid = geometry.Cuboid(5, 20, 5, -5, 15, -15)
@@ -124,7 +124,7 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(cuboid.max_x, 5)
         self.assertEqual(cuboid.max_y, 20)
         self.assertEqual(cuboid.max_z, 5)
-        self.assertEqual(cuboid.volume, 1000)
+        self.assertEqual(cuboid.get_volume(), 1000)
 
     def test_cuboid_bool(self):
         c1 = geometry.Cuboid(2, 2, 2, 7, 5, 3)
@@ -142,18 +142,18 @@ class GeometryTest(unittest.TestCase):
     def test_cuboid_intersection(self):
         c1 = geometry.Cuboid(0, 0, 0, 20, 15, 10)
         c2 = geometry.Cuboid(5, 5, 5, 15, 25, 35)  # Intersecting c1
-        c3 = geometry.Cuboid(0, 15, 5, 20, 45, 45)  # bordering, but disjoint to c1
+        c3 = geometry.Cuboid(0, 15, 5, 20, 45, 45) # bordering but disjoint
         c4 = geometry.Cuboid(50, 50, 50, 60, 60, 60)  # fully disjoint to c1
         c5 = geometry.Cuboid(2, 2, 2, 14, 10, 8)  # fully surrounded by c1
-        c6 = geometry.Cuboid(24.9, 19.9, 14.9, 40, 35, 30)  # Less than 5 padding to c1
-        c7 = geometry.Cuboid(25.1, 0, 0, 40, 15, 10)  # More than 5 padding to c1
+        c6 = geometry.Cuboid(24.9, 19.9, 14.9, 40, 35, 30) # Too little padding
+        c7 = geometry.Cuboid(25.1, 0, 0, 40, 15, 10)  # More than 5 padding
 
         # Intersection
         expected = geometry.Cuboid(5, 5, 5, 15, 15, 10)
         self.assertEqual(c1.intersection(c2), expected)
         self.assertEqual(c2.intersection(c1), expected)
-        self.assertEqual(c1.intersection(c3).volume, 0)
-        self.assertEqual(c1.intersection(c4).volume, 0)
+        self.assertEqual(c1.intersection(c3).get_volume(), 0)
+        self.assertEqual(c1.intersection(c4).get_volume(), 0)
         self.assertEqual(c1.intersection(c5), c5)
         self.assertEqual(c5.intersection(c1), c5)
         self.assertEqual(c1.intersection(c1), c1)
@@ -210,14 +210,14 @@ class CollisionTest(unittest.TestCase):
         new_object = geometry.Cuboid(70, 100, 0, 150, 180, 60)
         self.assertEqual(cy.moving_parts(new_object),
                          (geometry.Rectangle(-10, 50.1, 176, 252),
-                          geometry.Cuboid(41.5, 0, 84, 182, 1000, float('inf'))))
+                         geometry.Cuboid(41.5, 0, 84, 182, 1000, float('inf'))))
         self.assertEqual(cx.moving_parts(new_object),
                          (geometry.Rectangle(-10, 50.1, 176, 252),
                           geometry.Cuboid(0, 71.5, 84, 500, 212, float('inf'))))
         # Rectangle works too
         self.assertEqual(cy.moving_parts(new_object.projection()),
                          (geometry.Rectangle(-10, 50.1, 176, 252),
-                          geometry.Cuboid(41.5, 0, 84, 182, 1000, float('inf'))))
+                         geometry.Cuboid(41.5, 0, 84, 182, 1000, float('inf'))))
 
     def test_collision(self):
         cy = self.collision
