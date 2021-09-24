@@ -1,1 +1,1 @@
-from .collision_check import load_config
+from .interface import load_config

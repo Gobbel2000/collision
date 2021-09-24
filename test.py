@@ -13,8 +13,7 @@ site.addsitedir(os.path.dirname(_extras_dir))  # For configfile module
 
 import configfile
 
-from collision import geometry
-import collision
+from collision import geometry, load_config
 
 
 # Needed to create ConfigWrapper
@@ -182,14 +181,14 @@ class CollisionTest(unittest.TestCase):
             fileconfig.read_file(fp)
         config = configfile.ConfigWrapper(
             _DummyPrinter(), fileconfig, {}, "collision")
-        self.collision = collision.load_config(config)
+        self.collision = load_config(config).collision
 
         # Make another collision object but with an x-oriented gantry
         fc_x = copy.deepcopy(fileconfig)
         fc_x.set("collision", "gantry_orientation", "x")
         config_x = configfile.ConfigWrapper(
             _DummyPrinter(), fc_x, {}, "collision")
-        self.collision_x = collision.load_config(config_x)
+        self.collision_x = load_config(config_x).collision
 
     def test_attributes(self):
         c = self.collision
@@ -243,60 +242,60 @@ class CollisionTest(unittest.TestCase):
 
         # Too large for printer
         o_large = geometry.Cuboid(10, 20, 0, 1500, 2000, 899)
-        self.assertFalse(cy.printjob_collision(o_large))
+        self.assertTrue(cy.object_collides(o_large))
 
-        cy.add_printed_object(objects0[0])
-        cx.add_printed_object(objects0[0])
-        self.assertTrue(cy.printjob_collision(objects0[1]))
+        cy.add_object(objects0[0])
+        cx.add_object(objects0[0])
+        self.assertFalse(cy.object_collides(objects0[1]))
         # Gantry collides
-        self.assertFalse(cx.printjob_collision(objects0[1]))
+        self.assertTrue(cx.object_collides(objects0[1]))
         cy.clear_objects()
         cx.clear_objects()
 
-        cy.add_printed_object(objects1[0])
-        cx.add_printed_object(objects1[0])
-        self.assertTrue(cy.printjob_collision(objects1[1]))
+        cy.add_object(objects1[0])
+        cx.add_object(objects1[0])
+        self.assertFalse(cy.object_collides(objects1[1]))
         # Gantry passes over
-        self.assertTrue(cx.printjob_collision(objects1[1]))
+        self.assertFalse(cx.object_collides(objects1[1]))
         cy.clear_objects()
         cx.clear_objects()
 
-        cy.add_printed_object(objects2[0])
-        cx.add_printed_object(objects2[0])
+        cy.add_object(objects2[0])
+        cx.add_object(objects2[0])
         # Printhead collides
-        self.assertFalse(cy.printjob_collision(objects2[1]))
-        self.assertFalse(cx.printjob_collision(objects2[1]))
+        self.assertTrue(cy.object_collides(objects2[1]))
+        self.assertTrue(cx.object_collides(objects2[1]))
         cy.clear_objects()
         cx.clear_objects()
 
-        cy.add_printed_object(objects3[0])
-        cx.add_printed_object(objects3[0])
+        cy.add_object(objects3[0])
+        cx.add_object(objects3[0])
         # Everything collides
-        self.assertFalse(cy.printjob_collision(objects3[1]))
-        self.assertFalse(cx.printjob_collision(objects3[1]))
+        self.assertTrue(cy.object_collides(objects3[1]))
+        self.assertTrue(cx.object_collides(objects3[1]))
         cy.clear_objects()
         cx.clear_objects()
 
-        cy.add_printed_object(objects4[0])
-        cx.add_printed_object(objects4[0])
+        cy.add_object(objects4[0])
+        cx.add_object(objects4[0])
         # Nothing collides
-        self.assertTrue(cy.printjob_collision(objects4[1]))
-        self.assertTrue(cx.printjob_collision(objects4[1]))
+        self.assertFalse(cy.object_collides(objects4[1]))
+        self.assertFalse(cx.object_collides(objects4[1]))
         cy.clear_objects()
         cx.clear_objects()
 
-        cy.add_printed_object(objects5[0])
-        cx.add_printed_object(objects5[0])
+        cy.add_object(objects5[0])
+        cx.add_object(objects5[0])
         # The padding isn't kept
-        self.assertFalse(cy.printjob_collision(objects5[1]))
-        self.assertFalse(cx.printjob_collision(objects5[1]))
+        self.assertTrue(cy.object_collides(objects5[1]))
+        self.assertTrue(cx.object_collides(objects5[1]))
         # Test that it would work with padding set from 5 to 3
         cy_no_pad = copy.copy(cy)
         cx_no_pad = copy.copy(cx)
         cy_no_pad.padding = 3
         cx_no_pad.padding = 3
-        self.assertTrue(cy_no_pad.printjob_collision(objects5[1]))
-        self.assertTrue(cx_no_pad.printjob_collision(objects5[1]))
+        self.assertFalse(cy_no_pad.object_collides(objects5[1]))
+        self.assertFalse(cx_no_pad.object_collides(objects5[1]))
         cy.clear_objects()
         cx.clear_objects()
 
@@ -350,8 +349,8 @@ class FinderTest(unittest.TestCase):
         new_object = geometry.Rectangle(380, 800, 400, 820)
 
         for o in objects:
-            cy.add_printed_object(o)
-            cx.add_printed_object(o)
+            cy.add_object(o)
+            cx.add_object(o)
 
         # First don't specify object size
         self.assertEqual(cy.get_gantry_collisions(),
@@ -419,13 +418,13 @@ class FinderTest(unittest.TestCase):
         objects0 = [geometry.Cuboid(0, 0, 0, 500, 600, 50),
                     geometry.Cuboid(0, 650, 0, 300, 1000, 50)]
         for o in objects0:
-            cy.add_printed_object(o)
-            cx.add_printed_object(o)
+            cy.add_object(o)
+            cx.add_object(o)
         expected = (100, 200)
         self.assertEqual(cy.find_offset(new0), expected)
         self.assertEqual(cx.find_offset(new0), expected)
-        self.assertFalse(cy.printjob_collision(new0))
-        self.assertTrue(cy.printjob_collision(
+        self.assertTrue(cy.object_collides(new0))
+        self.assertFalse(cy.object_collides(
             new0.translate(*expected, 0)))
         cy.clear_objects()
         cx.clear_objects()
@@ -434,8 +433,8 @@ class FinderTest(unittest.TestCase):
         objects1 = [geometry.Cuboid(300, 0, 0, 500, 1000, 50),
                     geometry.Cuboid(0, 500, 0, 300, 1000, 50)]
         for o in objects1:
-            cy.add_printed_object(o)
-            cx.add_printed_object(o)
+            cy.add_object(o)
+            cx.add_object(o)
         self.assertEqual(cy.find_offset(new0), (-100, -100))
         self.assertEqual(cx.find_offset(new0), (-100, -100))
         cy.clear_objects()
@@ -443,8 +442,8 @@ class FinderTest(unittest.TestCase):
 
         # Move in one dimension needed
         object2 = geometry.Cuboid(200, 0, 0, 300, 750, 50)
-        cy.add_printed_object(object2)
-        cx.add_printed_object(object2)
+        cy.add_object(object2)
+        cx.add_object(object2)
         self.assertEqual(cy.find_offset(new0), (100, 0))
         self.assertEqual(cx.find_offset(new0), (0, 350))
         cy.clear_objects()
@@ -453,12 +452,12 @@ class FinderTest(unittest.TestCase):
         # Barely space left
         objects3 = [geometry.Cuboid(0, 0, 0, 331, 1000, 50),  # Just enough
                     geometry.Cuboid(0, 0, 0, 332, 1000, 50)]  # Doesn't fit
-        cy.add_printed_object(objects3[0])
-        cx.add_printed_object(objects3[0])
+        cy.add_object(objects3[0])
+        cx.add_object(objects3[0])
         self.assertEqual(cy.find_offset(new0), (131, 0))
         self.assertEqual(cx.find_offset(new0), (131, 0))
-        cy.add_printed_object(objects3[1])
-        cx.add_printed_object(objects3[1])
+        cy.add_object(objects3[1])
+        cx.add_object(objects3[1])
         self.assertIsNone(cy.find_offset(new0))
         self.assertIsNone(cx.find_offset(new0))
         cy.clear_objects()
@@ -467,8 +466,8 @@ class FinderTest(unittest.TestCase):
         # GANTRY TESTS
         # Move in one dimension needed, but with gantry
         object4 = geometry.Cuboid(200, 100, 0, 400, 600, 100)
-        cy.add_printed_object(object4)
-        cx.add_printed_object(object4)
+        cy.add_object(object4)
+        cx.add_object(object4)
         # -206 because the gantry is 6 wider than the printhead here
         self.assertEqual(cy.find_offset(new0), (-206, 0))
         # In this case the gantry does not affect the result

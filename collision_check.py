@@ -1,56 +1,20 @@
 from .geometry import Rectangle, Cuboid
 
 
-class Collision:
+class BoxCollision:
+    """Contains collision detection and offset search.
+    At this level all objects are abstracted to boxes from the geometry module.
+    """
 
-    def __init__(self, config):
-        self._config = config
-
-        self.printbed = self._read_printbed()
-        self.printhead = self._read_printhead()
-        self.gantry, self.gantry_x_oriented = self._read_gantry()
-        self.gantry_height = config.getfloat("gantry_z_min")
-        self.padding = config.getfloat("padding", 5)
-
-        self.current_objects = []
-
-    def _read_printbed(self):
-        """Read the printer size from the config and return it as a Cuboid"""
-        stepper_configs = [self._config.getsection("stepper_" + axis)
-                           for axis in "xyz"]
-        min_ = [cfg.getfloat("position_min") for cfg in stepper_configs]
-        max_ = [cfg.getfloat("position_max") for cfg in stepper_configs]
-        return Cuboid(*min_, *max_)
-
-    def _read_printhead(self):
-        """Return a Rectangle representing the size of the print head
-        as viewed from above. The printing nozzle would be at (0, 0).
-        """
-        config = self._config
-        return Rectangle(
-            -config.getfloat("printhead_x_min"),
-            -config.getfloat("printhead_y_min"),
-            config.getfloat("printhead_x_max"),
-            config.getfloat("printhead_y_max"),
-        )
-
-    def _read_gantry(self):
-        """Return a Rectangle representing the size of the gantry as viewed
-        from above as well as if it is oriented parallel to the X-Axis or not.
-        The printing nozzle would be at the 0-coordinate on the other axis.
-        """
-        config = self._config
-        xy_min = config.getfloat("gantry_xy_min")
-        xy_max = config.getfloat("gantry_xy_max")
-        x_oriented = config.getchoice("gantry_orientation",
-                                      {"x": True, "y": False})
-        if x_oriented:
-            gantry = Rectangle(self.printbed.x, -xy_min,
-                               self.printbed.width, xy_max)
-        else:
-            gantry = Rectangle(-xy_min, self.printbed.y,
-                               xy_max, self.printbed.height)
-        return gantry, x_oriented
+    def __init__(self, printbed, printhead, gantry, gantry_x_oriented,
+                 gantry_height, padding, current_objects=None):
+        self.printbed = printbed
+        self.printhead = printhead
+        self.gantry = gantry
+        self.gantry_x_oriented = gantry_x_oriented
+        self.gantry_height = gantry_height
+        self.padding = padding
+        self.current_objects = current_objects or []
 
     def moving_parts(self, print_object):
         """Return collision boxes for the moving parts (printhead and gantry)
@@ -92,25 +56,25 @@ class Collision:
         """
         return self.printbed.intersection(new_object) == new_object
 
-    def printjob_collision(self, new_object):
-        """Return True if this object can be printed without collisions, False
-        otherwise.
+    def object_collides(self, new_object):
+        """Return True if printing this object would cause a collision, False
+        if it can be safely printed (without any offset).
 
         new_object should be a Cuboid outlining the space needed by the object.
         """
         if not self.fits_in_printer(new_object):
             # Doesn't fit in the printer at all!
-            return False
+            return True
 
         mv_printhead, mv_gantry = self.moving_parts(new_object)
         for obj in self.current_objects:
             if (new_object.collides_with(obj, self.padding) or
                 mv_printhead.collides_with(obj.projection(), self.padding) or
                 mv_gantry.collides_with(obj, self.padding)):
-                return False
-        return True
+                return True
+        return False
     
-    def add_printed_object(self, new_object):
+    def add_object(self, new_object):
         """Add an object, like a finished print job, to be considered in the
         future.
 
@@ -132,7 +96,7 @@ class Collision:
         otherwise returns None.
         """
         new_object = object_cuboid.projection()
-        if self.printjob_collision(object_cuboid):
+        if not self.object_collides(object_cuboid):
             # Fits without any offset
             return (0, 0)
 
@@ -153,7 +117,7 @@ class Collision:
                 # If it still doesn't fit, the Z-Axis is at fault
                 return None
 
-        if self.printjob_collision(object_cuboid):
+        if not self.object_collides(object_cuboid):
             # Only centering was needed
             return centering_offset
 
@@ -217,8 +181,10 @@ class Collision:
                      for x, max_x in ranges]
         return boxes
 
-    def _condense_ranges(self, ranges, min_space=0):
+    @staticmethod
+    def _condense_ranges(ranges, min_space=0):
         """Consolidate ranges so that none of them overlap/border each other
+        ranges must be a 2-dimensional list with shape (n, 2).
         WARNING: This function may mutate the ranges list as well as its
         contained lists!"""
         if not ranges:
@@ -379,7 +345,3 @@ class Collision:
     def _get_colliding_objects(one, other):
         """Return a list of all objects in other that collide with one"""
         return [r for r in other if one.collides_with(r)]
-
-
-def load_config(config):
-    return Collision(config)
