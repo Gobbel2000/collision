@@ -6,7 +6,10 @@ class CollisionInterface:
 
     def __init__(self, config):
         self._config = config
-
+        self.continuous_printing = config.getboolean('continuous_printing', False)
+        self.reposition = config.getboolean('reposition', False)
+        self.condition = config.getchoice('condition', {'exact': "exact", "type": "type", "any": "any"}, "any")
+    
         printbed = self._read_printbed()
         printhead = self._read_printhead()
         gantry, gantry_x_oriented = self._read_gantry(printbed)
@@ -15,6 +18,8 @@ class CollisionInterface:
 
         self.collision = BoxCollision(printbed, printhead, gantry,
                                       gantry_x_oriented, gantry_height, padding)
+        self.printer = config.get_printer()
+        self.printer.register_event_handler("virtual_sdcard:print_end", self.add_printjob)
 
     def _read_printbed(self):
         """Read the printer size from the config and return it as a Cuboid"""
@@ -54,6 +59,16 @@ class CollisionInterface:
                                xy_max, printbed.height)
         return gantry, x_oriented
 
+    def check_available(self, printjob):
+        if not self.continuous_printing:
+            return not self.collision.current_objects, None
+        available = not self.printjob_collides(printjob)
+        if not available and self.reposition:
+            offset = self.find_offset(printjob)
+            available = offset != None
+        else:
+            offset = (0, 0)
+        return available, offset
     ##
     ## Conversion functions
     ##
@@ -83,12 +98,13 @@ class CollisionInterface:
         cuboid = self.printjob_to_cuboid(printjob)
         return self.collision.object_collides(cuboid)
 
-    def add_printjob(self, printjob):
+    def add_printjob(self, printjobs, printjob):
         cuboid = self.printjob_to_cuboid(printjob)
         self.collision.add_object(cuboid)
 
     def clear_printjobs(self):
         self.collision.clear_objects()
+        self.printer.lookup_object('virtual_sdcard').check_queue()
 
     def find_offset(self, printjob):
         cuboid = self.printjob_to_cuboid(printjob)
