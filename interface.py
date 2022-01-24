@@ -9,7 +9,7 @@ class CollisionInterface:
         self.continuous_printing = config.getboolean('continuous_printing', False)
         self.reposition = config.getboolean('reposition', False)
         self.condition = config.getchoice('condition', {'exact': "exact", "type": "type", "any": "any"}, "any")
-    
+
         printbed = self._read_printbed()
         printhead = self._read_printhead()
         gantry, gantry_x_oriented = self._read_gantry(printbed)
@@ -110,6 +110,18 @@ class CollisionInterface:
         cuboid = self.printjob_to_cuboid(printjob)
         return self.collision.find_offset(cuboid)
 
+    def get_config(self):
+        return self.continuous_printing, self.reposition, self.condition
+
+    def set_config(self, continuous_printing, reposition, condition):
+        self.continuous_printing = continuous_printing
+        self.reposition = reposition
+        self.condition = condition
+        configfile = self.printer.lookup_object('configfile')
+        configfile.set("collision", "continuous_printing", continuous_printing)
+        configfile.set("collision", "reposition", reposition)
+        configfile.set("collision", "condition", condition)
+        configfile.save_config(restart=False)
 
 def load_config(config):
     return CollisionInterface(config)
