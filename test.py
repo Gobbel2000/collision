@@ -19,6 +19,8 @@ from collision import geometry, load_config
 # Needed to create ConfigWrapper
 class _DummyPrinter:
     reactor = None
+    def register_event_handler(self, _, __):
+        pass
 
 CONFIG_FILE = "test_config.cfg"
 

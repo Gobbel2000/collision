@@ -6,9 +6,11 @@ class CollisionInterface:
 
     def __init__(self, config):
         self._config = config
-        self.continuous_printing = config.getboolean('continuous_printing', False)
+        self.continuous_printing = config.getboolean(
+                'continuous_printing', False)
         self.reposition = config.getboolean('reposition', False)
-        self.condition = config.getchoice('condition', {'exact': "exact", "type": "type", "any": "any"}, "any")
+        self.condition = config.getchoice('condition',
+                {'exact': "exact", "type": "type", "any": "any"}, "any")
 
         printbed = self._read_printbed()
         printhead = self._read_printhead()
@@ -19,7 +21,8 @@ class CollisionInterface:
         self.collision = BoxCollision(printbed, printhead, gantry,
                                       gantry_x_oriented, gantry_height, padding)
         self.printer = config.get_printer()
-        self.printer.register_event_handler("virtual_sdcard:print_end", self.add_printjob)
+        self.printer.register_event_handler(
+                "virtual_sdcard:print_end", self.add_printjob)
 
     def _read_printbed(self):
         """Read the printer size from the config and return it as a Cuboid"""
@@ -69,6 +72,7 @@ class CollisionInterface:
         else:
             offset = (0, 0)
         return available, offset
+
     ##
     ## Conversion functions
     ##
@@ -109,6 +113,7 @@ class CollisionInterface:
     def find_offset(self, printjob):
         cuboid = self.printjob_to_cuboid(printjob)
         return self.collision.find_offset(cuboid)
+
 
     def get_config(self):
         return self.continuous_printing, self.reposition, self.condition

@@ -7,14 +7,14 @@ class BoxCollision:
     """
 
     def __init__(self, printbed, printhead, gantry, gantry_x_oriented,
-                 gantry_height, padding, current_objects=[]):
+                 gantry_height, padding, current_objects=None):
         self.printbed = printbed
         self.printhead = printhead
         self.gantry = gantry
         self.gantry_x_oriented = gantry_x_oriented
         self.gantry_height = gantry_height
         self.padding = padding
-        self.current_objects = current_objects
+        self.current_objects = current_objects or []
 
     def moving_parts(self, print_object):
         """Return collision boxes for the moving parts (printhead and gantry)
