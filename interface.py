@@ -2,6 +2,9 @@ from .collision_check import BoxCollision
 from .geometry import Rectangle, Cuboid
 
 
+# Default padding, if not specified in config, in mm
+DEFAULT_PADDING = 5
+
 class CollisionInterface:
 
     def __init__(self, config):
@@ -16,7 +19,7 @@ class CollisionInterface:
         printhead = self._read_printhead()
         gantry, gantry_x_oriented = self._read_gantry(printbed)
         gantry_height = config.getfloat("gantry_z_min")
-        padding = config.getfloat("padding", 5)
+        padding = config.getfloat("padding", DEFAULT_PADDING)
 
         self.collision = BoxCollision(printbed, printhead, gantry,
                                       gantry_x_oriented, gantry_height, padding)

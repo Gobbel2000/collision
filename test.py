@@ -477,6 +477,27 @@ class FinderTest(unittest.TestCase):
         cy.clear_objects()
         cx.clear_objects()
 
+        # A negative offset is needed only in Y-orientation
+        object5 = geometry.Cuboid(200, 100, 0, 500, 300, 100)
+        cy.add_object(object5)
+        cx.add_object(object5)
+        # Gantry requires additional offset
+        self.assertEqual(cy.find_offset(new0), (-206, 0))
+        self.assertEqual(cx.find_offset(new0), (0, 0))
+        cy.clear_objects()
+        cx.clear_objects()
+
+        # A positive offset is needed only in Y-orientation
+        object6 = geometry.Cuboid(0, 100, 0, 300, 300, 100)
+        cy.add_object(object6)
+        cx.add_object(object6)
+        # Gantry allows lower offset
+        self.assertEqual(cy.find_offset(new0), (48.5, 0))
+        self.assertEqual(cx.find_offset(new0), (0, 0))
+        cy.clear_objects()
+        cx.clear_objects()
+
+
     def _object_from_space(self, space):
         """Take a Cuboid of a space that an offset should be found for and
         create an object that would need this space by removing padding and
