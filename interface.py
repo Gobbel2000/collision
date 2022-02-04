@@ -1,3 +1,5 @@
+import logging
+
 from .collision_check import BoxCollision
 from .geometry import Rectangle, Cuboid
 
@@ -12,7 +14,7 @@ class CollisionInterface:
         self.continuous_printing = config.getboolean(
                 'continuous_printing', False)
         self.reposition = config.getboolean('reposition', False)
-        self.condition = config.getchoice('condition',
+        self.material_condition = config.getchoice('material_condition',
                 {'exact': "exact", "type": "type", "any": "any"}, "any")
 
         printbed = self._read_printbed()
@@ -25,7 +27,7 @@ class CollisionInterface:
                                       gantry_x_oriented, gantry_height, padding)
         self.printer = config.get_printer()
         self.printer.register_event_handler(
-                "virtual_sdcard:print_end", self.add_printjob)
+                "virtual_sdcard:print_end", self._handle_print_end)
 
     def _read_printbed(self):
         """Read the printer size from the config and return it as a Cuboid"""
@@ -68,13 +70,56 @@ class CollisionInterface:
     def check_available(self, printjob):
         if not self.continuous_printing:
             return not self.collision.current_objects, None
-        available = not self.printjob_collides(printjob)
-        if not available and self.reposition:
-            offset = self.find_offset(printjob)
-            available = offset != None
-        else:
-            offset = (0, 0)
-        return available, offset
+
+        try:
+            available = not self.printjob_collides(printjob)
+            if not available and self.reposition:
+                offset = self.find_offset(printjob)
+                available = offset is not None
+            else:
+                offset = None
+            available = available and self.check_material(printjob)
+            return available, offset
+        except MissingMetadataError:
+            return False, None
+
+    def check_material(self, printjob):
+        if self.material_condition == "any":
+            return True
+        fm = self.printer.load_object(self._config, "filament_manager")
+        loaded = fm.get_status()["loaded"]
+        md = printjob.md
+
+        # Make sure the print job doesn't expect more extruders than we have
+        if md.get_extruder_count() > len(loaded):
+            return False
+
+        for extruder in range(md.get_extruder_count()):
+            l_guid = loaded[extruder]["guid"]
+            guid = md.get_material_guid(extruder)
+
+            if guid is not None and guid == l_guid:
+                continue
+            elif self.material_condition == "exact":
+                # If exact match is wanted, require guids to match
+                return False
+
+            p_type = md.get_material_type(extruder)
+            l_type = fm.get_info(l_guid, "./m:metadata/m:name/m:material")
+            if (p_type is None or l_type is None or
+                p_type.lower() != l_type.lower()):
+                return False
+
+        return True
+
+    def _handle_print_end(self, printjobs, printjob):
+        try:
+            self.add_printjob(printjob)
+        except MissingMetadataError:
+            logging.warning("Collision: Couldn't read print dimensions for"
+                    + printjob.path)
+            # Save as entire printbed to force collision with all other prints
+            self.collision.add_object(self.collision.printbed)
 
     ##
     ## Conversion functions
@@ -87,7 +132,8 @@ class CollisionInterface:
         dimensions = metadata.get_print_dimensions()
         for e in dimensions.values():
             if e is None:
-                raise ValueError("Missing print dimensions in GCode Metadata")
+                raise MissingMetadataError(
+                        "Missing print dimensions in GCode Metadata")
         return Cuboid(dimensions["MinX"], dimensions["MinY"],
                       dimensions["MinZ"], dimensions["MaxX"],
                       dimensions["MaxY"], dimensions["MaxZ"])
@@ -105,13 +151,12 @@ class CollisionInterface:
         cuboid = self.printjob_to_cuboid(printjob)
         return self.collision.object_collides(cuboid)
 
-    def add_printjob(self, printjobs, printjob):
+    def add_printjob(self, printjob):
         cuboid = self.printjob_to_cuboid(printjob)
         self.collision.add_object(cuboid)
 
     def clear_printjobs(self):
         self.collision.clear_objects()
-        self.printer.lookup_object('virtual_sdcard').check_queue()
 
     def find_offset(self, printjob):
         cuboid = self.printjob_to_cuboid(printjob)
@@ -130,6 +175,10 @@ class CollisionInterface:
         configfile.set("collision", "reposition", reposition)
         configfile.set("collision", "condition", condition)
         configfile.save_config(restart=False)
+
+
+class MissingMetadataError(AttributeError):
+    pass
 
 def load_config(config):
     return CollisionInterface(config)
