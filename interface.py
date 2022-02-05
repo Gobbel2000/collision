@@ -164,16 +164,16 @@ class CollisionInterface:
 
 
     def get_config(self):
-        return self.continuous_printing, self.reposition, self.condition
+        return self.continuous_printing, self.reposition, self.material_condition
 
     def set_config(self, continuous_printing, reposition, condition):
         self.continuous_printing = continuous_printing
         self.reposition = reposition
-        self.condition = condition
+        self.material_condition = condition
         configfile = self.printer.lookup_object('configfile')
         configfile.set("collision", "continuous_printing", continuous_printing)
         configfile.set("collision", "reposition", reposition)
-        configfile.set("collision", "condition", condition)
+        configfile.set("collision", "material_condition", condition)
         configfile.save_config(restart=False)
 
 
