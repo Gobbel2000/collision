@@ -67,13 +67,12 @@ class CollisionInterface:
 
     def check_available(self, printjob):
         if not self.continuous_printing:
-            return not self.collision.current_objects, None
+            return not self.collision.current_objects, (0, 0)
         available = not self.printjob_collides(printjob)
+        offset = (0, 0)
         if not available and self.reposition:
             offset = self.find_offset(printjob)
             available = offset != None
-        else:
-            offset = (0, 0)
         return available, offset
 
     ##
