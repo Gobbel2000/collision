@@ -301,6 +301,12 @@ class CollisionTest(unittest.TestCase):
         cy.clear_objects()
         cx.clear_objects()
 
+        # The entire printbed shouldn't collide
+        self.assertFalse(cy.object_collides(cy.printbed))
+        self.assertFalse(cx.object_collides(cx.printbed))
+        cy.clear_objects()
+        cx.clear_objects()
+
 
 class FinderTest(unittest.TestCase):
 
