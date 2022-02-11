@@ -118,7 +118,6 @@ class CollisionInterface:
                     + printjob.path)
             # Save as entire printbed to force collision with all other prints
             self.collision.add_object(self.collision.printbed)
->>>>>>> 78fd5cb11d9b020118b2b2173c2142c6a0a1edca
 
     ##
     ## Conversion functions
