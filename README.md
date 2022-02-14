@@ -1,11 +1,13 @@
+# _DEPRECATED:_ Now integrated into klippo
+
+#### _This repository was formerly a submodule of [D4SK/klippo](https://github.com/D4SK/klippo) but is now fully integrated into that repository. This repository will no longer be maintained._
+
 # Collision
 
 Klipper module to check whether another print job can be printed right away
 without causing collisions. In case this isn't possible, this module also
 provides a function to find an offset that allows a print job to be printed
 anyway at a different place on the print bed.
-
-This is meant to be used in [D4SK/klipperui](https://github.com/D4SK/klipperui).
 
 
 ## Configuration
